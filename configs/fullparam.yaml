@@ -1,0 +1,62 @@
+model:
+  name: "meta-llama/Meta-Llama-3-8B"
+  use_flash_attention: true
+  bf16: true
+  gradient_checkpointing: true
+
+paths:
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
+  splits_dir: "data/splits"
+  checkpoints_dir: "checkpoints"
+  results_dir: "results"
+
+data:
+  location_relations:
+    - "P17"
+    - "P19"
+    - "P20"
+    - "P36"
+    - "P69"
+    - "P131"
+    - "P159"
+    - "P276"
+    - "P495"
+    - "P740"
+  data_scales: [60, 120, 240, 480, 960, 1920]
+  n_repetitions: 5
+  random_seeds: [42, 43, 44, 45, 46]
+
+mastery_scoring:
+  n_templates: 7
+  n_samples: 3
+  temperature: 0.7
+  max_new_tokens: 16
+  batch_size: 64
+
+# Full-parameter SFT — no LoRA.
+# Reproduces the exact training procedure from Ye et al. (2025).
+lora:
+  enabled: false
+
+training:
+  learning_rate: 1.0e-5
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 8
+  num_train_epochs: 1
+  # adamw_torch is required for DeepSpeed ZeRO-2 CPU offload compatibility.
+  optimizer: "adamw_torch"
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.03
+  max_seq_length: 256
+  save_steps: 4
+  logging_steps: 10
+  eval_steps: 100
+  # ZeRO-3 + CPU param+optimizer offload: keeps only per-layer param slices on GPU
+  # during forward/backward, with everything else in system RAM. Fits LLaMA-3-8B
+  # comfortably within 31 GB. Slower than ZeRO-2 but the only option on 1 GPU.
+  # Requires ~80 GB free system RAM (params 16 GB + grads 16 GB + optimizer 64 GB).
+  deepspeed_config: "configs/deepspeed_zero3.json"
+
+  aft_d_enabled: false
+  aft_p_enabled: false

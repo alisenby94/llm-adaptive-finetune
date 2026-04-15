@@ -1,0 +1,58 @@
+# ── Sensitive / credentials ───────────────────────────────────────────────────
+.env
+.env.*
+*.key
+*.pem
+secrets/
+
+# ── Research PDFs (large binary, not source) ──────────────────────────────────
+*.pdf
+
+# ── Data  (large; reproduce with scripts/01-03) ───────────────────────────────
+data/raw/
+data/processed/
+data/splits/
+data/_tmp/
+
+# ── Model checkpoints & eval results (large; reproduce with scripts/04-05) ───
+checkpoints/
+results/
+
+# ── Generated figures (reproducible) ─────────────────────────────────────────
+figures/
+!figures/.gitkeep
+
+# ── Training & eval logs ──────────────────────────────────────────────────────
+logs/
+!logs/.gitkeep
+nohup.out
+*.log
+
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+*.egg
+
+# ── Jupyter ───────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── wandb ────────────────────────────────────────────────────────────────────
+wandb/
+
+# ── DeepSpeed / torch compile caches ─────────────────────────────────────────
+.deepspeed_env
+torch_extensions/
+~/.cache/torch_extensions/
+
+# ── OS / IDE ──────────────────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,102 @@
+model:
+  name: "meta-llama/Meta-Llama-3-8B"
+  # Set to "meta-llama/Meta-Llama-3-1B" for quick pipeline validation before GPU arrives
+  use_flash_attention: true
+  bf16: true
+  gradient_checkpointing: true
+
+paths:
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
+  splits_dir: "data/splits"
+  checkpoints_dir: "checkpoints"
+  results_dir: "results"
+
+data:
+  # 10 location-related Wikidata relation IDs used for train + in-domain test
+  # (verified against the actual EntityQuestions dataset.zip from Princeton NLP)
+  # Remaining 14 relations in the dataset are treated as OOD test.
+  location_relations:
+    - "P17"    # country
+    - "P19"    # place of birth
+    - "P20"    # place of death
+    - "P36"    # capital
+    - "P69"    # educated at (institution/location)
+    - "P131"   # located in administrative territorial entity
+    - "P159"   # headquarters location
+    - "P276"   # location / venue
+    - "P495"   # country of origin
+    - "P740"   # location of formation
+  # Data scales to sweep (number of training samples)
+  data_scales: [60, 120, 240, 480, 960, 1920]
+  # Number of independent random seeds for training data sampling
+  n_repetitions: 5
+  random_seeds: [42, 43, 44, 45, 46]
+
+mastery_scoring:
+  n_templates: 7        # reduced from 21 for ~3x speedup (sufficient for stable categories)
+  n_samples: 3          # reduced from 10 for ~3x speedup (~10x total vs. original)
+  temperature: 0.7
+  max_new_tokens: 16
+  batch_size: 64        # facts scored in parallel per GPU batch
+
+# LoRA configuration (required for 32 GB GPU — full-param SFT needs ~38 GB).
+# High rank (r=64) closely approximates full-param quality for knowledge tasks.
+lora:
+  enabled: true
+  r: 64
+  alpha: 128          # alpha/r = 2 is a standard scaling
+  dropout: 0.05
+  target_modules:     # all projection layers in LLaMA attention + FFN
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+training:
+  learning_rate: 1.0e-5
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 8    # effective batch size = 8, matching paper
+  num_train_epochs: 1
+  # With LoRA, standard adamw_torch works fine (only ~160 MB optimizer states).
+  optimizer: "adamw_torch"
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.03
+  max_seq_length: 256
+  save_steps: 100
+  logging_steps: 10
+  eval_steps: 100
+  # Optional: path to a DeepSpeed config for ZeRO-2 CPU offload.
+  # Enables full-param SFT on 32 GB VRAM by moving optimizer states to CPU RAM.
+  # Requires ~48 GB system RAM for optimizer states (FP32 Adam = 2x model size).
+  # Set to null to disable DeepSpeed and rely on paged_adamw_8bit instead.
+  deepspeed_config: null   # e.g. "configs/deepspeed_zero2.json"
+
+  # ---- AFT hooks (set to false for baseline reproduction, Phase 0-1) ----
+  aft_d_enabled: false     # Phase 2: data-aware loss reweighting
+  aft_p_enabled: false     # Phase 3: selective parameter micro-resets
+
+  # AFT-D parameters (used when aft_d_enabled: true)
+  aft_d:
+    kl_spike_threshold: 0.5   # flag sample if sKL > threshold
+    loss_spike_factor: 2.0    # flag sample if loss > factor * running_mean
+    reweight_min: 0.1         # minimum weight for flagged samples (0 = full deferral)
+
+  # AFT-P parameters (used when aft_p_enabled: true)
+  aft_p:
+    reset_every_n_steps: 100  # apply micro-resets every N gradient steps
+    restore_top_k_percent: 5  # reset top-k% most drifted params per suspect layer
+    suspect_layer_threshold: 0.8  # layer qualifies if its delta norm is in top-X percentile
+
+evaluation:
+  max_new_tokens: 16
+  batch_size: 32
+  greedy_decoding: true
+
+restoration:
+  # Post-hoc parameter restoration sweep (baseline from the original paper)
+  k_values: [0.01, 0.03, 0.05, 0.10, 0.20, 0.40, 0.60]
+  sort_metric: "abs_delta"   # rank parameters by |theta_ft - theta_0|
